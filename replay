@@ -1,0 +1,40 @@
+#! /bin/sh
+#
+# Usage:
+#     gunzip -c access.log.gz | ./replay [--devrel] client
+#     ./replay [--devrel] client < access.log
+
+PORTS[0]=8091
+MAX=0
+
+while [ $# -gt 0 ]
+do
+    case $1 in
+        --devrel | -d )
+            PORTS[0]=8091
+            PORTS[1]=8092
+            PORTS[2]=8093
+            MAX=2
+            ;;
+        *)
+            break
+            ;;
+    esac
+    shift
+done
+
+node=0
+while read line
+do
+    curl -X POST \
+        -H 'content-type: text/plain' \
+        "http://localhost:${PORTS[$node]}/mfvn/entry/tempodb" \
+        -d "$line"
+
+    if [ $node -eq $MAX ]
+    then
+        node=0
+    else
+        ((node++))
+    fi
+done
