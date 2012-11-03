@@ -14,61 +14,62 @@
     handoff_cancelled/1,
     handoff_finished/2,
     handoff_starting/2,
-    is_empty/1
+    is_empty/1,
+    start_vnode/1
   ]).
 
 -export([
-    get/2,
-    set/3,
-    sadd/3,
-    incr/2
+    get/3,
+    set/4,
+    sadd/4,
+    incr/3
   ]).
 
 -record(state, {partition, stats}).
 
 -define(MASTER, mfvn_stat_vnode_master).
--define(sync(PrefList, Command, Master),
-  riak_core_vnode_master:sync_command(PrefList, Command, Master)).
 
-get(IdxNode, StatName) ->
-  ?sync(IdxNode, {get, StatName}, ?MASTER).
-set(IdxNode, StatName, Val) ->
-  ?sync(IdxNode, {set, StatName, Val}, ?MASTER).
-sadd(IdxNode, StatName, Val) ->
-  ?sync(IdxNode, {sadd, StatName, Val}, ?MASTER).
-incr(IdxNode, StatName) ->
-  ?sync(IdxNode, {incr, StatName}, ?MASTER).
+start_vnode(I) -> riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
+
+get(PrefList, ReqId, StatName) ->
+  riak_core_vnode_master:command(PrefList, {get, ReqId, StatName}, {fsm, undefined, self()}, ?MASTER).
+set(PrefList, ReqId, StatName, Val) ->
+  riak_core_vnode_master:command(PrefList, {set, ReqId, StatName, Val}, {fsm, undefined, self()}, ?MASTER).
+sadd(PrefList, ReqId, StatName, Val) ->
+  riak_core_vnode_master:command(PrefList, {sadd, ReqId, StatName, Val}, {fsm, undefined, self()}, ?MASTER).
+incr(PrefList, ReqId, StatName) ->
+  riak_core_vnode_master:command(PrefList, {incr, ReqId, StatName}, {fsm, undefined, self()}, ?MASTER).
 
 init([Partition]) ->
   io:format("Starting stat vnode~n"),
   {ok, #state {partition = Partition, stats = dict:new()}}.
 
-handle_command({get, StatName}, _Sender, #state{stats=Stats} = State) ->
+handle_command({get, ReqId, StatName}, _Sender, #state{stats=Stats} = State) ->
   Reply = case dict:find(StatName, Stats) of
     error -> not_found;
-    Found -> Found
+    {ok, Found} -> Found
   end,
-  {reply, Reply, State};
-handle_command({set, StatName, Val}, _Sender, #state{stats=Stats0} = State) ->
+  {reply, {ok, ReqId, Reply}, State};
+handle_command({set, ReqId, StatName, Val}, _Sender, #state{stats=Stats0} = State) ->
   Stats = dict:store(StatName, Val, Stats0),
-  {reply, ok, State#state{stats=Stats}};
-handle_command({incr, StatName}, _Sender, #state{stats=Stats0} = State) ->
+  {reply, {ok, ReqId}, State#state{stats=Stats}};
+handle_command({incr, ReqId, StatName}, _Sender, #state{stats=Stats0} = State) ->
   Stats = dict:update_counter(StatName, 1, Stats0),
-  {reply, ok, State#state{stats = Stats}};
-handle_command({incrby, StatName, Val}, _Sender, #state{stats=Stats0} = State) ->
+  {reply, {ok, ReqId}, State#state{stats = Stats}};
+handle_command({incrby, ReqId, StatName, Val}, _Sender, #state{stats=Stats0} = State) ->
   Stats = dict:update_counter(StatName, Val, Stats0),
-  {reply, ok, State#state{stats = Stats}};
-handle_command({append, StatName, Val}, _Sender, #state{stats=Stats0} = State) ->
+  {reply, {ok, ReqId}, State#state{stats = Stats}};
+handle_command({append, ReqId, StatName, Val}, _Sender, #state{stats=Stats0} = State) ->
   Stats = try dict:append(StatName, Val, Stats0)
     catch _:_ -> dict:store(StatName, [Val], Stats0)
   end,
-  {reply, ok, State#state{stats = Stats}};
-handle_command({sadd, StatName, Val}, _Sender, #state{stats=Stats0} = State) ->
+  {reply, {ok, ReqId}, State#state{stats = Stats}};
+handle_command({sadd, ReqId, StatName, Val}, _Sender, #state{stats=Stats0} = State) ->
   F = fun(S) ->
       sets:add_element(Val, S)
   end,
   Stats = dict:update(StatName, F, sets:from_list([Val]), Stats0),
-  {reply, ok, State#state{stats=Stats}}.
+  {reply, {ok, ReqId}, State#state{stats=Stats}}.
 
 is_empty(State) ->
   case dict:size(State#state.stats) of

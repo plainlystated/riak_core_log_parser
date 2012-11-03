@@ -26,7 +26,6 @@
 -record(state, {partition, reg}).
 
 start_vnode(I) ->
-  io:format("entry - start_vnode~n"),
   riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 entry(IdxNode, Client, Entry) ->

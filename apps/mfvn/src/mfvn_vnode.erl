@@ -21,11 +21,9 @@
 
 %% API
 start_vnode(I) ->
-  io:format("vnode - start_vnode~n"),
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 init([Partition]) ->
-  io:format("vnode - start~n"),
     {ok, #state { partition=Partition }}.
 
 %% Sample command: respond to a ping

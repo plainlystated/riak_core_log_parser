@@ -11,8 +11,12 @@
     get/2,
     set/3,
     sadd/3,
-    incr/2
+    incr/2,
+    get_debug_preflist/2,
+    get_debug_preflist/3
   ]).
+
+-define(TIMEOUT, 5000).
 
 %% Public API
 
@@ -30,17 +34,39 @@ entry(Client, Entry) ->
   mfvn_entry_vnode:entry(IdxNode, Client, Entry).
 
 get(Client, StatName) ->
-  mfvn_stat_vnode:get(getidxnode(Client, StatName), StatName).
+  {ok, ReqId} = mfvn_get_fsm:get(Client, StatName),
+  wait_for_reqid(ReqId, ?TIMEOUT).
+
+get_debug_preflist(Client, StatName) ->
+  DocIdx = riak_core_util:chash_key({list_to_binary(Client), list_to_binary(StatName)}),
+  riak_core_apl:get_apl(DocIdx, ?N, mfvn_stat).
+
+get_debug_preflist(Client, StatName, N) ->
+  IdxNode = lists:nth(N, get_debug_preflist(Client, StatName)),
+  {ok, req_id, Val} = riak_core_vnode_master:sync_command(IdxNode, {
+      get, req_id, StatName}, mfvn_stat_vnode_master),
+  [IdxNode, Val].
 
 set(Client, StatName, Val) ->
-  mfvn_stat_vnode:set(getidxnode(Client, StatName), StatName, Val).
+  do_write(Client, StatName, set, Val).
 
 sadd(Client, StatName, Val) ->
-  mfvn_stat_vnode:sadd(getidxnode(Client, StatName), StatName, Val).
+  do_write(Client, StatName, sadd, Val).
 
 incr(Client, StatName) ->
-  mfvn_stat_vnode:incr(getidxnode(Client, StatName), StatName).
+  do_write(Client, StatName, incr).
 
-getidxnode(Client, StatName) ->
-  DocIdx = riak_core_util:chash_key({list_to_binary(Client), list_to_binary(StatName)}),
-  hd(riak_core_apl:get_apl(DocIdx, 1, mfvn_stat)).
+do_write(Client, StatName, Op) ->
+  {ok, ReqId} = mfvn_write_fsm:write(Client, StatName, Op),
+  wait_for_reqid(ReqId, ?TIMEOUT).
+
+do_write(Client, StatName, Op, Val) ->
+  {ok, ReqId} = mfvn_write_fsm:write(Client, StatName, Op, Val),
+  wait_for_reqid(ReqId, ?TIMEOUT).
+
+wait_for_reqid(ReqId, Timeout) ->
+  receive
+    {ReqId, ok} -> ok;
+    {ReqId, ok, Val} -> {ok, Val}
+  after Timeout -> {error, timeout}
+  end.
