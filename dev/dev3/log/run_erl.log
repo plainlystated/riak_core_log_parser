@@ -1,8 +1,0 @@
-run_erl [2235] Fri Nov  2 23:25:34 2012
-Args before exec of shell:
-run_erl [2235] Fri Nov  2 23:25:34 2012
-argv[0] = sh
-run_erl [2235] Fri Nov  2 23:25:34 2012
-argv[1] = -c
-run_erl [2235] Fri Nov  2 23:25:34 2012
-argv[2] = exec /Users/rellik/repos/riak_core_log_parser/dev/dev3/bin/mfvn console 
